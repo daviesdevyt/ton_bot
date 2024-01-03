@@ -5,4 +5,4 @@ load_dotenv()
 
 bot = AsyncTeleBot(os.getenv('BOT_TOKEN'), parse_mode="HTML")
 manifest_url = os.getenv('MANIFEST_URL')
-
+destination_address = os.getenv('DESTINATION_ADDRESS')

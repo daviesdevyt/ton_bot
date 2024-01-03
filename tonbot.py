@@ -3,6 +3,23 @@ from connector import get_connector
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import asyncio
 from pytoniq_core import Address
+from utils import create_transaction
+import pytonconnect
+
+
+async def start_message(message, connector):
+    wallet_address = Address(connector.account.address).to_str(is_bounceable=False)
+
+    await bot.send_message(
+        message,
+        f"""<b>Wallet Address:</b> <code>{wallet_address}</code>
+
+/buy [amount] - 💹Buy TON
+
+/sell [amount] - 📈Sell TON
+
+/disconnect - 🔌Disconnect @wallet
+""")
 
 
 @bot.message_handler(["start"])
@@ -10,7 +27,7 @@ async def start(message):
     connector = get_connector(message.chat.id)
     connected = await connector.restore_connection()
     if connected:
-        await bot.send_message(message.chat.id, "Connected!")
+        await start_message(message.chat.id, connector)
     else:
         url = await connector.connect(
             {
@@ -31,14 +48,43 @@ async def start(message):
             await asyncio.sleep(1)
             if connector.connected:
                 if connector.account.address:
-                    wallet_address = connector.account.address
-                    wallet_address = Address(wallet_address).to_str(is_bounceable=False)
-                    await bot.reply_to(
-                        message,
-                        f"You are connected with address <code>{wallet_address}</code>",
-                    )
+                    await start_message(message.chat.id, connector)
                 return
         await bot.send_message(message.chat.id, f"Timeout error!", reply_markup=kb)
+
+
+@bot.message_handler(["buy"])
+async def buy_ton(message):
+    connector = get_connector(message.chat.id)
+    await connector.restore_connection()
+    if not connector.connected:
+        return await start(message)
+    amount = message.text.split(" ")[-1]
+    try:
+        amount = float(amount)
+    except ValueError:
+        return await bot.send_message(
+            message.chat.id, "Amount must be a number!.\nFormat /buy [amount]"
+        )
+
+    await bot.send_message(
+        message.chat.id, "Approve transaction in your @wallet app!\nYou have 5 minutes⌛"
+    )
+    try:
+        await asyncio.wait_for(
+            connector.send_transaction(
+                transaction=create_transaction(destination_address, amount)
+            ),
+            300,
+        )
+    except asyncio.TimeoutError:
+        await bot.reply_to(message, "Timeout error!")
+    except pytonconnect.exceptions.UserRejectsError:
+        await bot.reply_to(message, "You rejected the transaction!")
+    except Exception as e:
+        await bot.reply_to(message, f"Unknown error: {e}")
+
+    await bot.send_message(message.chat.id, "Buy TON")
 
 
 print("Starting...")
