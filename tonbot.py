@@ -4,7 +4,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import asyncio
 from pytoniq_core import Address
 from utils import create_transaction
-import pytonconnect
+from pytonconnect.exceptions import UserRejectsError
 
 
 async def start_message(message, connector):
@@ -19,7 +19,8 @@ async def start_message(message, connector):
 /sell [amount] - 📈Sell TON
 
 /disconnect - 🔌Disconnect @wallet
-""")
+""",
+    )
 
 
 @bot.message_handler(["start"])
@@ -66,6 +67,29 @@ async def buy_ton(message):
         return await bot.send_message(
             message.chat.id, "Amount must be a number!.\nFormat /buy [amount]"
         )
+    kb = InlineKeyboardMarkup()
+    for i in range(1, 5):
+        kb.add(
+            InlineKeyboardButton(
+                f"Bank {i}", callback_data=f"bank:{i} (Not implemented)"
+            )
+        )
+    await bot.send_message(message.chat.id, "Select your bank:", reply_markup=kb)
+
+
+@bot.message_handler(["sell"])
+async def sell_ton(message):
+    connector = get_connector(message.chat.id)
+    await connector.restore_connection()
+    if not connector.connected:
+        return await start(message)
+    amount = message.text.split(" ")[-1]
+    try:
+        amount = float(amount)
+    except ValueError:
+        return await bot.send_message(
+            message.chat.id, "Amount must be a number!.\nFormat /sell [amount]"
+        )
 
     await bot.send_message(
         message.chat.id, "Approve transaction in your @wallet app!\nYou have 5 minutes⌛"
@@ -79,12 +103,18 @@ async def buy_ton(message):
         )
     except asyncio.TimeoutError:
         await bot.reply_to(message, "Timeout error!")
-    except pytonconnect.exceptions.UserRejectsError:
+    except UserRejectsError:
         await bot.reply_to(message, "You rejected the transaction!")
     except Exception as e:
         await bot.reply_to(message, f"Unknown error: {e}")
 
-    await bot.send_message(message.chat.id, "Buy TON")
+
+@bot.message_handler(["disconnect"])
+async def disconnect_wallet(message):
+    connector = get_connector(message.chat.id)
+    await connector.restore_connection()
+    await connector.disconnect()
+    await bot.send_message(message.chat.id, "You have been successfully disconnected!")
 
 
 print("Starting...")
